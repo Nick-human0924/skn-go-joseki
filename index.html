@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>围棋定式记忆</title>
+    <link rel="stylesheet" href="styles.css?v=20260523-ux-refactor" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">●</span>
+          <div>
+            <h1>围棋定式记忆</h1>
+            <p>儿童定式记忆训练</p>
+          </div>
+        </div>
+
+        <div class="top-context" id="topContext">请选择一个定式</div>
+
+        <div class="top-actions">
+          <button class="icon-button" id="leftPaneToggle" type="button" title="折叠左侧栏">左栏</button>
+          <button class="icon-button" id="rightPaneToggle" type="button" title="折叠右侧栏">设置</button>
+          <button class="icon-button" id="importButton" type="button" title="导入 JSON">导入</button>
+          <div class="menu-wrap">
+            <button class="primary-button" id="moreMenuButton" type="button" aria-expanded="false">导出 / 打印</button>
+            <div class="top-menu" id="topMoreMenu" hidden>
+              <button class="menu-item" id="exportCurrentButton" type="button">导出当前</button>
+              <button class="menu-item" id="exportAllButton" type="button">导出全部</button>
+              <button class="menu-item primary-menu-item" id="printButton" type="button">打印 / PDF</button>
+            </div>
+          </div>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+        </div>
+      </header>
+
+      <main class="workspace" id="workspace">
+        <aside class="sidebar" id="leftSidebar" aria-label="分类与定式导航">
+          <section class="panel flat-panel">
+            <div class="panel-heading">
+              <h2>分类</h2>
+              <span id="recordCount">0题</span>
+            </div>
+            <div id="categoryList" class="category-list"></div>
+            <form id="categoryForm" class="inline-form">
+              <input id="newCategoryName" type="text" placeholder="新分类名称" maxlength="18" />
+              <button type="submit">新增</button>
+            </form>
+          </section>
+
+          <section class="panel flat-panel">
+            <div class="panel-heading">
+              <h2>标签</h2>
+              <button class="link-button" id="clearTagFilter" type="button">清空</button>
+            </div>
+            <div id="tagFilterList" class="tag-list"></div>
+          </section>
+
+          <section class="panel flat-panel side-record-panel">
+            <div class="panel-heading">
+              <h2>定式导航</h2>
+              <button type="button" class="link-button" id="shufflePracticeButton">随机</button>
+            </div>
+            <div id="sideRecordList" class="side-record-list"></div>
+          </section>
+        </aside>
+
+        <section class="main-board-area" aria-label="定式棋盘">
+          <section class="editor-bar" aria-label="当前定式编辑">
+            <div class="record-title-block">
+              <label class="field-label">当前定式</label>
+              <input id="recordTitle" class="record-title-input" type="text" maxlength="36" />
+            </div>
+            <div class="record-meta">
+              <select id="recordCategory" aria-label="定式分类"></select>
+              <input id="variantName" type="text" placeholder="变形：基础变化" maxlength="28" />
+              <select id="variantAdvantage" aria-label="变形优势方">
+                <option value="black">黑优</option>
+                <option value="white">白优</option>
+                <option value="even">平手</option>
+              </select>
+              <input id="recordTags" type="text" placeholder="标签：入门, 常见" />
+            </div>
+            <div class="board-size-controls" aria-label="棋盘大小">
+              <button type="button" data-size="9">9路</button>
+              <button type="button" data-size="13">13路</button>
+              <button type="button" data-size="19">19路</button>
+              <label>
+                自定义
+                <input id="customBoardSize" type="number" min="5" max="19" />
+              </label>
+            </div>
+            <div class="record-actions">
+              <button type="button" id="editRecordButton" class="secondary-button" title="回到当前定式编辑">编辑</button>
+              <button type="button" id="newRecordButton" title="新建定式">新建</button>
+              <button type="button" id="newVariantButton" title="在当前定式下新增变形">新变形</button>
+              <button type="button" id="duplicateRecordButton" title="复制当前定式">复制</button>
+              <button type="button" id="deleteRecordButton" class="danger-button" title="删除当前变形">删变形</button>
+              <button type="button" id="deleteJosekiButton" class="danger-button" title="删除当前定式及全部变形">删定式</button>
+            </div>
+          </section>
+
+          <section class="edit-panel" id="editTools" aria-label="编辑定式工具">
+            <div class="edit-panel-copy">
+              <h2>编辑定式</h2>
+              <p>先摆题面棋子，再记录答案手顺。</p>
+            </div>
+            <div class="tool-grid" id="editToolSelector" role="group" aria-label="编辑工具">
+              <button type="button" data-tool="alternate"><span class="tool-dot alternate-dot"></span>交替</button>
+              <button type="button" data-tool="black"><span class="tool-dot black-dot"></span>黑棋</button>
+              <button type="button" data-tool="white"><span class="tool-dot white-dot"></span>白棋</button>
+              <button type="button" data-tool="answer"><span class="tool-dot answer-dot"></span>答案点</button>
+              <button type="button" data-tool="erase"><span class="tool-dot erase-dot"></span>橡皮</button>
+            </div>
+            <div class="edit-recording-block">
+              <button type="button" class="record-toggle" id="recordSequenceButton">开始记录顺序</button>
+              <button type="button" class="secondary-button" id="clearVariationButton">清空当前变化</button>
+              <p class="hint" id="recordingHint">未开始记录：落子只作题面。</p>
+            </div>
+          </section>
+
+          <section class="board-stage" aria-label="棋盘练习区">
+            <div class="board-stage-head">
+              <div>
+                <strong id="practiceProgress">编辑模式</strong>
+                <span id="feedback" class="feedback" role="status">准备好了，可以开始。</span>
+              </div>
+              <div class="board-zoom-controls" aria-label="棋盘缩放">
+                <button type="button" id="fitBoardButton">适应</button>
+                <button type="button" id="zoomOutButton">缩小</button>
+                <button type="button" id="zoomInButton">放大</button>
+              </div>
+            </div>
+            <div class="board-wrap">
+              <div id="goBoard" class="go-board" aria-label="围棋棋盘"></div>
+            </div>
+          </section>
+
+          <section class="move-strip" aria-label="手顺列表">
+            <div class="strip-heading">
+              <h2>手顺列表</h2>
+              <span id="moveCountLabel">0手</span>
+            </div>
+            <div id="moveList" class="move-list"></div>
+          </section>
+
+          <div class="notes-row">
+            <label>
+              备注
+              <textarea id="recordNotes" rows="2" placeholder="例如：黑棋先压，白棋注意连接。"></textarea>
+            </label>
+          </div>
+
+          <section class="record-strip" aria-label="定式卡片">
+            <div class="strip-heading">
+              <h2>当前分类定式</h2>
+              <button type="button" id="resetPracticeButton">重做本题</button>
+            </div>
+            <div id="recordCards" class="record-cards"></div>
+          </section>
+        </section>
+
+        <aside class="control-panel" id="rightSidebar" aria-label="当前任务面板">
+          <details class="panel task-panel" open>
+            <summary>练习</summary>
+            <p class="practice-ready-hint">定式完成后，选择方式开始练习。</p>
+            <div class="segmented compact" id="modeSelector" role="group" aria-label="练习方式">
+              <button type="button" data-mode="sequence">顺序填空</button>
+              <button type="button" data-mode="free">自由落子</button>
+            </div>
+
+            <div class="setting-block">
+              <h3>批改方式</h3>
+              <div class="segmented compact" id="correctionSelector" role="group" aria-label="批改方式">
+                <button type="button" data-correction="instant">每步提示</button>
+                <button type="button" data-correction="final">练完再判</button>
+              </div>
+              <label class="check-row hint-toggle-row" hidden>
+                <input id="hintToggle" type="checkbox" />
+                开启提示
+              </label>
+              <p class="hint compact-hint">每步提示显示下一手；练完再判落满后批改错点。</p>
+            </div>
+
+            <button type="button" class="primary-button wide" id="startPracticeButton">开始练习</button>
+            <button type="button" class="secondary-button wide" id="undoMoveButton">返回一步</button>
+            <button type="button" class="secondary-button wide" id="showAnswerButton">显示答案</button>
+          </details>
+
+          <details class="panel task-panel" open>
+            <summary>统计</summary>
+            <div class="setting-block stats-grid">
+              <div>
+                <span>已练</span>
+                <strong id="attemptCount">0 次</strong>
+              </div>
+              <div>
+                <span>正确率</span>
+                <strong id="accuracyRate">0%</strong>
+              </div>
+              <div>
+                <span>连续正确</span>
+                <strong id="streakCount">0 题</strong>
+              </div>
+              <div>
+                <span>最近结果</span>
+                <strong id="lastResult">未练习</strong>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel task-panel print-panel">
+            <summary>打印</summary>
+            <label class="field-row">
+              棋盘颜色
+              <select id="boardTheme">
+                <option value="wood">木纹</option>
+                <option value="pale">浅色</option>
+                <option value="white">白底打印</option>
+              </select>
+            </label>
+            <div class="choice-grid">
+              <label class="check-row">
+                <input type="radio" name="printLayout" value="single" />
+                一题一页
+              </label>
+              <label class="check-row">
+                <input type="radio" name="printLayout" value="grid" checked />
+                多题一页
+              </label>
+            </div>
+            <div class="print-section-label">打印内容</div>
+            <label class="check-row">
+              <input type="radio" name="printContent" value="practice" checked />
+              练习页
+            </label>
+            <label class="check-row">
+              <input type="radio" name="printContent" value="answers" />
+              答案页
+            </label>
+            <label class="check-row">
+              <input id="includeAnswers" type="radio" name="printContent" value="both" />
+              练习+答案
+            </label>
+            <select id="printScope">
+              <option value="current">当前变形</option>
+              <option value="joseki">当前定式全部变形</option>
+              <option value="selected">勾选内容</option>
+              <option value="category">当前分类</option>
+              <option value="all">全部定式</option>
+            </select>
+            <div id="printSelectionList" class="print-selection-list"></div>
+            <button type="button" class="primary-button wide" id="printPanelButton">打印 / PDF</button>
+          </details>
+        </aside>
+      </main>
+    </div>
+
+    <div class="practice-summary" id="practiceSummary" hidden>
+      <div class="summary-card" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+        <h2 id="summaryTitle">练习完成</h2>
+        <div id="summaryBody" class="summary-body"></div>
+        <div class="summary-actions">
+          <button type="button" class="secondary-button" id="summaryRetryButton">重新练习</button>
+          <button type="button" class="primary-button" id="summaryNextButton">下一题</button>
+          <button type="button" id="summaryCloseButton">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <section id="printRoot" class="print-root" aria-hidden="true"></section>
+
+    <template id="miniBoardTemplate">
+      <div class="mini-board"></div>
+    </template>
+
+    <script src="app.js?v=20260523-ux-refactor"></script>
+  </body>
+</html>
