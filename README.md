@@ -39,7 +39,7 @@
 
 ## 数据说明
 
-所有数据默认保存在当前浏览器的本地存储中，不需要账号登录，也不会上传到服务器。需要换设备时，可以用 JSON 导出和导入。
+所有数据默认保存在当前浏览器的本地存储中；登录后会把整份定式数据同步到 Supabase 账号。未登录时仍可离线使用，并保留 JSON 导入导出作为手动备份。
 
 ## 设计原则
 
@@ -47,3 +47,14 @@
 - 操作简单：编辑和练习状态分离，减少孩子误操作。
 - 信息克制：只展示当前练习需要的信息，不把复杂棋谱管理界面暴露给孩子。
 - 可打印：方便把定式题变成线下练习纸。
+
+## Supabase 云同步
+
+当前已配置 Supabase 项目 `ovsmowsqiivdxfptbqte`。页面会加载 `supabase-config.js` 和 `supabase-sync.js`，右侧会显示账号同步入口。
+
+- 未登录：继续保存到当前浏览器的 `localStorage`。
+- 首次登录且云端无数据：上传当前本地数据作为账号初始数据。
+- 再次登录且云端有数据：拉取云端 store 覆盖本地并刷新页面。
+- 登录后编辑数据：本地保存后自动 debounce upsert 到 `public.go_joseki_stores`。
+
+数据库表和 RLS 策略见 `supabase/go_joseki_stores.sql`。前端只使用 Supabase publishable key，不包含 service role key。
