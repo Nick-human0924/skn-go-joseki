@@ -5,6 +5,8 @@ const LAST_SYNC_KEY = "go-joseki-memory:last-cloud-sync";
 const SUPABASE_TABLE = "go_joseki_stores";
 const CLOUD_SAVE_DEBOUNCE_MS = 900;
 
+window.GO_JOSEKI_APP_OWNS_SUPABASE_SYNC = true;
+
 const dom = {
   categoryList: document.getElementById("categoryList"),
   categoryForm: document.getElementById("categoryForm"),
