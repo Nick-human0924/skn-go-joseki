@@ -696,6 +696,7 @@ textarea {
 
 .stone,
 .answer-marker,
+.choice-marker,
 .star-point,
 .practice-label,
 .position-hint {
@@ -774,6 +775,40 @@ textarea {
   box-shadow:
     0 0 0 2px var(--danger),
     0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.choice-marker {
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: clamp(28px, calc(var(--cell) * 0.78), 52px);
+  height: clamp(28px, calc(var(--cell) * 0.78), 52px);
+  min-height: 0;
+  padding: 0;
+  border: 2px solid rgba(244, 187, 55, 0.92);
+  border-radius: 999px;
+  background: #ffd769;
+  box-shadow: 0 3px 8px rgba(84, 59, 11, 0.18);
+  color: #075bb8;
+  font-weight: 900;
+  font-size: clamp(16px, calc(var(--cell) * 0.44), 30px);
+  line-height: 1;
+}
+
+.choice-marker.selected {
+  box-shadow:
+    0 0 0 4px rgba(14, 148, 136, 0.24),
+    0 3px 8px rgba(84, 59, 11, 0.2);
+}
+
+.choice-marker.correct {
+  border-color: var(--teal);
+}
+
+.choice-marker.wrong {
+  border-color: var(--danger);
+  background: #ffe1dc;
+  color: var(--danger);
 }
 
 .star-point {
@@ -1051,6 +1086,14 @@ textarea {
 
 .segmented.compact {
   grid-template-columns: repeat(2, 1fr);
+}
+
+.practice-modes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.practice-modes button[data-mode="choice"] {
+  grid-column: 1 / -1;
 }
 
 .practice-ready-hint {
@@ -1473,6 +1516,21 @@ textarea {
 .answer-dot {
   border: 3px solid var(--teal);
   background: #fff;
+}
+
+.choice-dot {
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid #f1ba35;
+  background: #ffd769;
+}
+
+.choice-dot::after {
+  content: "A";
+  color: #075bb8;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .alternate-dot {

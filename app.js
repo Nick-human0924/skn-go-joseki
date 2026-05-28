@@ -102,6 +102,7 @@ const ui = {
   practiceHint: null,
   reviewHints: [],
   practiceResult: null,
+  choiceSelection: null,
   sequenceAnswers: [],
   freeMoves: [],
   showAnswer: false,
@@ -170,6 +171,11 @@ function createDefaultStore() {
         move(2, 2, "white", 2),
         move(4, 2, "black", 3),
       ],
+      choicePoints: [
+        choicePoint(3, 4),
+        choicePoint(5, 4),
+        choicePoint(1, 5),
+      ],
       answerMoves: [
         move(3, 4, "white", 4),
         move(4, 4, "black", 5),
@@ -189,6 +195,7 @@ function createDefaultStore() {
         move(2, 2, "black", 1),
         move(5, 2, "white", 2),
       ],
+      choicePoints: [choicePoint(3, 4), choicePoint(4, 4), choicePoint(6, 3)],
       answerMoves: [
         move(3, 4, "black", 3),
         move(5, 4, "white", 4),
@@ -209,6 +216,7 @@ function createDefaultStore() {
         move(2, 3, "white", 2),
         move(3, 2, "black", 3),
       ],
+      choicePoints: [choicePoint(3, 3), choicePoint(4, 3), choicePoint(1, 4)],
       answerMoves: [
         move(3, 3, "white", 4),
         move(1, 3, "black", 5),
@@ -238,6 +246,10 @@ function createDefaultStore() {
 
 function move(x, y, color, moveNo) {
   return { x, y, color, moveNo };
+}
+
+function choicePoint(x, y, label = "") {
+  return { x, y, label };
 }
 
 function loadStore() {
@@ -570,6 +582,30 @@ function normalizeAdvantage(value) {
   return ["black", "white", "even"].includes(value) ? value : "even";
 }
 
+function normalizeChoicePoints(points, boardSize = 19) {
+  const size = clampBoardSize(boardSize || 19);
+  const seen = new Set();
+  return (Array.isArray(points) ? points : [])
+    .map((item) => ({
+      x: Number(item.x),
+      y: Number(item.y),
+      label: String(item.label || "").trim(),
+    }))
+    .filter((item) => Number.isInteger(item.x) && Number.isInteger(item.y) && item.x >= 0 && item.y >= 0 && item.x < size && item.y < size)
+    .filter((item) => {
+      const key = pointKey(item.x, item.y);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((item, index) => ({ ...item, label: item.label || choiceLabel(index) }));
+}
+
+function choiceLabel(index) {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  return letters[index] || String(index + 1);
+}
+
 function advantageLabel(value) {
   const normalized = normalizeAdvantage(value);
   if (normalized === "black") return "黑优";
@@ -590,6 +626,7 @@ function normalizeStoreData(data) {
     if (!Array.isArray(record.tags)) record.tags = [];
     if (!Array.isArray(record.initialMoves)) record.initialMoves = [];
     if (!Array.isArray(record.answerMoves)) record.answerMoves = [];
+    record.choicePoints = normalizeChoicePoints(record.choicePoints || [], record.boardSize);
     return record;
   });
   return {
@@ -642,6 +679,7 @@ function createBlankRecord() {
     tags: ["入门"],
     boardSize: 9,
     initialMoves: [],
+    choicePoints: [],
     answerMoves: [],
     notes: "",
     createdAt: now,
@@ -1183,7 +1221,12 @@ function renderControls() {
   const hasRecord = Boolean(selectedRecord());
   dom.startPracticeButton.disabled = !hasRecord;
   dom.editRecordButton.disabled = !hasRecord;
-  dom.undoMoveButton.disabled = !hasRecord || ui.mode !== "free" || ui.freeMoves.length === 0;
+  dom.undoMoveButton.disabled =
+    !hasRecord ||
+    !(
+      (ui.mode === "free" && ui.freeMoves.length > 0) ||
+      (ui.mode === "choice" && ui.choiceSelection?.correct && ui.freeMoves.length > 0)
+    );
   dom.showAnswerButton.disabled = !hasRecord;
   dom.resetPracticeButton.disabled = !hasRecord;
   if (dom.shufflePracticeButton) dom.shufflePracticeButton.disabled = !filteredRecords().length;
@@ -1194,7 +1237,7 @@ function renderControls() {
   store.settings = store.settings || { boardTheme: "wood" };
   dom.boardTheme.value = normalizeBoardTheme(store.settings.boardTheme);
   document.querySelectorAll("#modeSelector button").forEach((button) => {
-    const activePracticeMode = ui.mode === "sequence" ? "sequence" : "free";
+    const activePracticeMode = ["sequence", "free", "choice"].includes(ui.mode) ? ui.mode : "free";
     button.classList.toggle("active", button.dataset.mode === activePracticeMode);
   });
   document.querySelectorAll("#editToolSelector button").forEach((button) => {
@@ -1238,6 +1281,14 @@ function renderPracticeProgress() {
   const total = record.answerMoves.length;
   if (ui.mode === "edit") {
     dom.practiceProgress.textContent = `编辑模式 · 答案 ${total} 手`;
+    return;
+  }
+  if (ui.mode === "choice" && !ui.choiceSelection) {
+    dom.practiceProgress.textContent = `先选最佳点 · 后续 ${Math.max(total - 1, 0)} 手`;
+    return;
+  }
+  if (ui.mode === "choice" && ui.choiceSelection && !ui.choiceSelection.correct) {
+    dom.practiceProgress.textContent = `最佳点已判错 · 共 ${total} 手`;
     return;
   }
   const done = ui.mode === "sequence" ? ui.sequenceAnswers.length : ui.freeMoves.length;
@@ -1557,6 +1608,61 @@ function renderBoard() {
     dom.goBoard.appendChild(marker);
   };
 
+  const appendChoiceMarkers = () => {
+    const firstAnswer = record.answerMoves[0];
+    (record.choicePoints || []).forEach((item) => {
+      const marker = document.createElement("span");
+      const isSelected = ui.choiceSelection && samePoint(ui.choiceSelection, item.x, item.y);
+      const isCorrect = firstAnswer && samePoint(firstAnswer, item.x, item.y);
+      const revealCorrect = ui.showAnswer || Boolean(ui.choiceSelection);
+      marker.className = `choice-marker${isSelected ? " selected" : ""}${isSelected && !ui.choiceSelection?.correct ? " wrong" : ""}${revealCorrect && isCorrect ? " correct" : ""}`;
+      marker.textContent = item.label || "?";
+      marker.setAttribute("aria-label", `候选点 ${item.label || ""}`);
+      placeElement(marker, item.x, item.y, size);
+      dom.goBoard.appendChild(marker);
+    });
+  };
+
+  if (ui.mode === "choice") {
+    const choiceIsCorrect = ui.choiceSelection?.correct;
+    const choicePosition = choiceIsCorrect ? currentFreePosition(record) : buildGoPosition(size, record.initialMoves, []);
+    Array.from(choicePosition.values()).forEach((item) => {
+      const markWrong = item.source === "free" && ui.correctionMode === "final" && ui.reviewHints.length && item.correct === false;
+      appendStone(item, markWrong);
+    });
+
+    if (!choiceIsCorrect) appendChoiceMarkers();
+
+    if (choiceIsCorrect && ui.showAnswer) {
+      const answerPosition = recordPosition(record);
+      record.answerMoves.forEach((item, index) => {
+        const live = answerPosition.get(pointKey(item.x, item.y));
+        if (live?.source === "answer" && live.sourceIndex === index) appendAnswerMarker(item, index, null, true);
+      });
+    }
+
+    const nextHint = choiceIsCorrect && ui.correctionMode === "instant" ? nextFreeExpected(record) : null;
+    if (nextHint && !ui.showAnswer) {
+      const hint = document.createElement("span");
+      hint.className = "position-hint next-hint";
+      hint.textContent = nextHint.moveNo || "";
+      hint.setAttribute("aria-label", `下一手第 ${nextHint.moveNo || ""} 手`);
+      placeElement(hint, nextHint.x, nextHint.y, size);
+      dom.goBoard.appendChild(hint);
+    }
+    if (choiceIsCorrect && ui.correctionMode === "final" && ui.reviewHints.length && !ui.showAnswer) {
+      ui.reviewHints.forEach((item) => {
+        const hint = document.createElement("span");
+        hint.className = "position-hint review-hint";
+        hint.textContent = item.moveNo || "";
+        hint.setAttribute("aria-label", `第 ${item.moveNo || ""} 手正确位置`);
+        placeElement(hint, item.x, item.y, size);
+        dom.goBoard.appendChild(hint);
+      });
+    }
+    return;
+  }
+
   const visibleAnswerMoves = ui.mode === "edit" || ui.mode === "sequence" || ui.showAnswer;
   if (ui.mode === "free") {
     const freePosition = currentFreePosition(record);
@@ -1630,6 +1736,8 @@ function renderBoard() {
       }
     });
   }
+
+  if (ui.mode === "edit" || ui.showAnswer) appendChoiceMarkers();
 }
 
 function placeElement(element, x, y, size) {
@@ -1704,6 +1812,8 @@ function handlePointClick(x, y) {
     answerSequencePoint(record, x, y);
   } else if (ui.mode === "free") {
     addFreeMove(record, x, y);
+  } else if (ui.mode === "choice") {
+    answerChoicePoint(record, x, y);
   }
   saveStore();
   render();
@@ -1711,6 +1821,7 @@ function handlePointClick(x, y) {
 
 function editPoint(record, x, y) {
   const existingInitial = record.initialMoves.findIndex((item) => samePoint(item, x, y));
+  const existingChoice = record.choicePoints.findIndex((item) => samePoint(item, x, y));
   let existingAnswer = -1;
   for (let index = record.answerMoves.length - 1; index >= 0; index -= 1) {
     if (samePoint(record.answerMoves[index], x, y)) {
@@ -1722,8 +1833,34 @@ function editPoint(record, x, y) {
   if (ui.editTool === "erase") {
     if (existingInitial >= 0) record.initialMoves.splice(existingInitial, 1);
     if (existingAnswer >= 0) record.answerMoves.splice(existingAnswer, 1);
+    if (existingChoice >= 0) record.choicePoints.splice(existingChoice, 1);
     renumberRecord(record);
     setFeedback("已删除这个点。", "info");
+    touchRecord(record);
+    return;
+  }
+
+  if (ui.editTool === "choice") {
+    if (existingChoice >= 0) {
+      record.choicePoints.splice(existingChoice, 1);
+      renumberRecord(record);
+      setFeedback("已删除这个候选点。", "info");
+      touchRecord(record);
+      return;
+    }
+    const questionPosition = buildGoPosition(clampBoardSize(record.boardSize), record.initialMoves, []);
+    if (questionPosition.has(pointKey(x, y))) {
+      setFeedback("候选点要放在题面空点上。", "bad");
+      return;
+    }
+    if (record.choicePoints.length >= 8) {
+      setFeedback("候选点最多放 8 个，避免小朋友看花。", "bad");
+      return;
+    }
+    const label = choiceLabel(record.choicePoints.length);
+    record.choicePoints.push(choicePoint(x, y, label));
+    renumberRecord(record);
+    setFeedback(`已加入候选点 ${label}。答案第 1 手所在候选点就是最佳点。`, "good");
     touchRecord(record);
     return;
   }
@@ -1756,6 +1893,48 @@ function editPoint(record, x, y) {
     setFeedback(`已加入题面${color === "black" ? "黑棋" : "白棋"}，不记录顺序。`, "good");
   }
   touchRecord(record);
+}
+
+function answerChoicePoint(record, x, y) {
+  const firstAnswer = record.answerMoves[0];
+  if (!firstAnswer) {
+    setFeedback("这个变形还没有答案步骤，不能练最佳点。", "bad");
+    return;
+  }
+
+  if (!ui.choiceSelection) {
+    const candidate = (record.choicePoints || []).find((item) => samePoint(item, x, y));
+    if (!candidate) {
+      setFeedback("请点击 A/B/C/D 候选点。", "bad");
+      return;
+    }
+    const correct = samePoint(firstAnswer, x, y);
+    ui.choiceSelection = { ...candidate, correct };
+    if (!correct) {
+      setFeedback(`选错了，${candidate.label || "这个点"}不是最佳点。`, "bad");
+      finishPractice(false);
+      return;
+    }
+
+    const currentPosition = buildGoPosition(clampBoardSize(record.boardSize), record.initialMoves, []);
+    const firstMove = move(firstAnswer.x, firstAnswer.y, firstAnswer.color, firstAnswer.moveNo || 1);
+    if (!isLegalGoMove(currentPosition, firstMove, clampBoardSize(record.boardSize))) {
+      setFeedback("最佳点位置正确，但这手在当前题面下不是合法手。", "bad");
+      finishPractice(false);
+      return;
+    }
+    ui.freeMoves.push({ ...firstMove, correct: true });
+    if (ui.freeMoves.length === record.answerMoves.length) {
+      finishPractice(true);
+      return;
+    }
+    const next = record.answerMoves[ui.freeMoves.length];
+    setFeedback(`位置正确。请继续走第 ${next?.moveNo || ui.freeMoves.length + 1} 手。`, "good");
+    return;
+  }
+
+  if (!ui.choiceSelection.correct) return;
+  addFreeMove(record, x, y);
 }
 
 function answerSequencePoint(record, x, y) {
@@ -1872,7 +2051,10 @@ function showPracticeSummary(isCorrect) {
   const wrongMoves =
     ui.mode === "sequence"
       ? ui.sequenceAnswers.filter((item) => !item.correct).length
-      : ui.freeMoves.filter((item) => item.correct === false).length;
+      : ui.mode === "choice"
+        ? (ui.choiceSelection && !ui.choiceSelection.correct ? 1 : 0) +
+          ui.freeMoves.filter((item) => item.correct === false).length
+        : ui.freeMoves.filter((item) => item.correct === false).length;
   const correctRate = Math.max(0, Math.round(((total - wrongMoves) / total) * 100));
   dom.summaryBody.innerHTML = `
     <div><span>本次正确率</span><strong>${isCorrect ? 100 : correctRate}%</strong></div>
@@ -1901,6 +2083,23 @@ function undoFreeMove() {
   ui.practiceHint = null;
   ui.reviewHints = [];
   setFeedback(`已退回第 ${removed.moveNo || ui.freeMoves.length + 1} 手。`, "info");
+  saveStore();
+  render();
+}
+
+function undoChoiceMove() {
+  const record = selectedRecord();
+  if (!record || ui.mode !== "choice" || !ui.choiceSelection?.correct || !ui.freeMoves.length) return;
+  rollbackFinishedPractice(record);
+  const removed = ui.freeMoves.pop();
+  ui.practiceHint = null;
+  ui.reviewHints = [];
+  if (!ui.freeMoves.length) {
+    ui.choiceSelection = null;
+    setFeedback("已退回到选择最佳点。", "info");
+  } else {
+    setFeedback(`已退回第 ${removed.moveNo || ui.freeMoves.length + 1} 手。`, "info");
+  }
   saveStore();
   render();
 }
@@ -1935,6 +2134,7 @@ function renumberRecord(record) {
   record.answerMoves.forEach((item, index) => {
     item.moveNo = index + 1;
   });
+  record.choicePoints = normalizeChoicePoints(record.choicePoints || [], record.boardSize);
 }
 
 function selectedEditColor(record, target) {
@@ -2103,6 +2303,7 @@ function setFeedback(message, type = "info") {
 function resetPracticeState() {
   ui.sequenceAnswers = [];
   ui.freeMoves = [];
+  ui.choiceSelection = null;
   ui.practiceHint = null;
   ui.reviewHints = [];
   ui.practiceResult = null;
@@ -2120,7 +2321,7 @@ function setBoardSize(size) {
   const record = selectedRecord();
   if (!record) return;
   const nextSize = clampBoardSize(size);
-  const hasOutOfRange = [...record.initialMoves, ...record.answerMoves].some(
+  const hasOutOfRange = [...record.initialMoves, ...record.answerMoves, ...(record.choicePoints || [])].some(
     (item) => item.x >= nextSize || item.y >= nextSize,
   );
   if (hasOutOfRange && !window.confirm("新棋盘会移除越界棋子，确定继续吗？")) {
@@ -2130,6 +2331,7 @@ function setBoardSize(size) {
   record.boardSize = nextSize;
   record.initialMoves = record.initialMoves.filter((item) => item.x < nextSize && item.y < nextSize);
   record.answerMoves = record.answerMoves.filter((item) => item.x < nextSize && item.y < nextSize);
+  record.choicePoints = normalizeChoicePoints((record.choicePoints || []).filter((item) => item.x < nextSize && item.y < nextSize), nextSize);
   renumberRecord(record);
   touchRecord(record);
   resetPracticeState();
@@ -2333,6 +2535,7 @@ dom.clearVariationButton?.addEventListener("click", () => {
   if (!record) return;
   if (!window.confirm("清空当前变形的题面棋子和答案手顺？")) return;
   record.initialMoves = [];
+  record.choicePoints = [];
   record.answerMoves = [];
   ui.selectedMoveIndex = -1;
   resetPracticeState();
@@ -2392,6 +2595,7 @@ dom.newVariantButton.addEventListener("click", () => {
     id: createId("rec"),
     variantName: `变化${variantCount}`,
     advantage: "even",
+    choicePoints: [],
     answerMoves: [],
     notes: "",
     createdAt: now,
@@ -2449,6 +2653,19 @@ dom.startPracticeButton.addEventListener("click", () => {
   resetPracticeState();
   if (ui.mode === "sequence") {
     setFeedback("请按正确顺序点击空心圆。", "info");
+  } else if (ui.mode === "choice") {
+    const first = record.answerMoves[0];
+    const hasCandidates = (record.choicePoints || []).length > 0;
+    const hasCorrectCandidate = first && (record.choicePoints || []).some((item) => samePoint(item, first.x, first.y));
+    if (!first) {
+      setFeedback("这个变形还没有答案步骤，不能练最佳点。", "bad");
+    } else if (!hasCandidates) {
+      setFeedback("请先在编辑模式用“候选点”标出 A/B/C/D。", "bad");
+    } else if (!hasCorrectCandidate) {
+      setFeedback("候选点里还没有答案第 1 手，请把正确位置也标成候选点。", "bad");
+    } else {
+      setFeedback("先选择最佳点。选错直接判错，选对后继续走后续变化。", "info");
+    }
   } else if (ui.mode === "free" && ui.correctionMode === "instant") {
     const first = record.answerMoves[0];
     setFeedback(first ? `第 ${first.moveNo || 1} 手已标出，请按提示落子。` : "这个变形还没有答案步骤。", "info");
@@ -2461,7 +2678,8 @@ dom.startPracticeButton.addEventListener("click", () => {
 });
 
 dom.undoMoveButton.addEventListener("click", () => {
-  undoFreeMove();
+  if (ui.mode === "choice") undoChoiceMove();
+  else undoFreeMove();
 });
 
 dom.resetPracticeButton.addEventListener("click", () => {
@@ -2614,6 +2832,7 @@ function importData(imported) {
       tags: Array.isArray(record.tags) ? record.tags : [],
       boardSize: clampBoardSize(record.boardSize || 9),
       initialMoves: sanitizeMoves(record.initialMoves || []),
+      choicePoints: normalizeChoicePoints(record.choicePoints || [], record.boardSize || 9),
       answerMoves: sanitizeMoves(record.answerMoves || []),
       notes: record.notes || "",
       createdAt: record.createdAt || new Date().toISOString(),
@@ -2714,7 +2933,11 @@ function createPrintCardSvg(record, withAnswers) {
   title.textContent = withAnswers ? `${variantTitle}（答案）` : variantTitle;
   const board = createPrintBoardSvg(record, withAnswers);
   const note = document.createElement("p");
-  note.textContent = withAnswers ? record.notes || "按编号复盘。" : "请在空心圆中填写正确手顺。";
+  note.textContent = withAnswers
+    ? record.notes || "按编号复盘。"
+    : (record.choicePoints || []).length
+      ? "先选择最佳点，再完成后续变化。"
+      : "请在空心圆中填写正确手顺。";
   card.append(title, board, note);
   return card;
 }
@@ -2825,6 +3048,32 @@ function createPrintBoardSvg(record, withAnswers) {
       );
     }
   });
+
+  if ((record.choicePoints || []).length) {
+    const firstAnswer = record.answerMoves[0];
+    record.choicePoints.forEach((item) => {
+      const cx = toSvgPoint(item.x);
+      const cy = toSvgPoint(item.y);
+      const isCorrect = firstAnswer && samePoint(firstAnswer, item.x, item.y);
+      svg.appendChild(
+        createSvgElement("circle", {
+          cx,
+          cy,
+          r: answerRadius * 0.92,
+          fill: "#ffd769",
+          stroke: withAnswers && isCorrect ? "#0e9488" : "#f1ba35",
+          "stroke-width": withAnswers && isCorrect ? 5 : 3,
+        }),
+      );
+      svg.appendChild(
+        createSvgText(item.label || "", cx, cy + answerRadius * 0.32, {
+          fill: "#075bb8",
+          size: Math.max(18, answerRadius * 1.05),
+          weight: "900",
+        }),
+      );
+    });
+  }
 
   return svg;
 }
