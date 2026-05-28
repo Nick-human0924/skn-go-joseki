@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>围棋定式记忆</title>
-    <link rel="stylesheet" href="styles.css?v=20260523-ux-refactor" />
+    <link rel="stylesheet" href="styles.css?v=20260528-cloud-sync" />
   </head>
   <body>
     <div class="app-shell">
@@ -21,7 +21,7 @@
 
         <div class="top-actions">
           <button class="icon-button" id="leftPaneToggle" type="button" title="折叠左侧栏">左栏</button>
-          <button class="icon-button" id="rightPaneToggle" type="button" title="折叠右侧栏">设置</button>
+          <button class="icon-button" id="accountPanelButton" type="button" title="打开账号同步">账号</button>
           <button class="icon-button" id="importButton" type="button" title="导入 JSON">导入</button>
           <div class="menu-wrap">
             <button class="primary-button" id="moreMenuButton" type="button" aria-expanded="false">导出 / 打印</button>
@@ -36,7 +36,7 @@
       </header>
 
       <main class="workspace" id="workspace">
-        <aside class="sidebar" id="leftSidebar" aria-label="分类与定式导航">
+        <aside class="sidebar" id="leftSidebar" aria-label="分类与任务面板">
           <section class="panel flat-panel">
             <div class="panel-heading">
               <h2>分类</h2>
@@ -57,13 +57,124 @@
             <div id="tagFilterList" class="tag-list"></div>
           </section>
 
-          <section class="panel flat-panel side-record-panel">
-            <div class="panel-heading">
-              <h2>定式导航</h2>
-              <button type="button" class="link-button" id="shufflePracticeButton">随机</button>
+          <details class="panel task-panel" id="accountSyncDetails">
+            <summary>账号同步</summary>
+            <div class="auth-panel" id="authPanel">
+              <div class="auth-account">
+                <span id="authAccountLabel">未登录</span>
+                <strong id="syncStatus">本地保存</strong>
+              </div>
+              <label class="field-row">
+                邮箱
+                <input id="authEmail" type="email" autocomplete="email" placeholder="parent@example.com" />
+              </label>
+              <label class="field-row">
+                密码
+                <input id="authPassword" type="password" autocomplete="current-password" placeholder="至少 6 位密码" />
+              </label>
+              <div class="auth-actions">
+                <button type="button" class="primary-button" id="signInButton">登录</button>
+                <button type="button" class="secondary-button" id="signUpButton">注册</button>
+              </div>
+              <div class="auth-actions signed-in-actions">
+                <button type="button" class="secondary-button" id="syncNowButton">手动同步</button>
+                <button type="button" id="signOutButton">退出</button>
+              </div>
+              <p class="hint compact-hint" id="syncHelp">未配置或未登录时，数据仍保存在当前浏览器。</p>
             </div>
-            <div id="sideRecordList" class="side-record-list"></div>
-          </section>
+          </details>
+
+          <details class="panel task-panel" open>
+            <summary>练习</summary>
+            <p class="practice-ready-hint">定式完成后，选择方式开始练习。</p>
+            <div class="segmented compact" id="modeSelector" role="group" aria-label="练习方式">
+              <button type="button" data-mode="sequence">顺序填空</button>
+              <button type="button" data-mode="free">自由落子</button>
+            </div>
+
+            <div class="setting-block">
+              <h3>批改方式</h3>
+              <div class="segmented compact" id="correctionSelector" role="group" aria-label="批改方式">
+                <button type="button" data-correction="instant">每步提示</button>
+                <button type="button" data-correction="final">练完再判</button>
+              </div>
+              <label class="check-row hint-toggle-row" hidden>
+                <input id="hintToggle" type="checkbox" />
+                开启提示
+              </label>
+              <p class="hint compact-hint">每步提示显示下一手；练完再判落满后批改错点。</p>
+            </div>
+
+            <button type="button" class="primary-button wide" id="startPracticeButton">开始练习</button>
+            <button type="button" class="secondary-button wide" id="undoMoveButton">返回一步</button>
+            <button type="button" class="secondary-button wide" id="showAnswerButton">显示答案</button>
+          </details>
+
+          <details class="panel task-panel">
+            <summary>统计</summary>
+            <div class="setting-block stats-grid">
+              <div>
+                <span>已练</span>
+                <strong id="attemptCount">0 次</strong>
+              </div>
+              <div>
+                <span>正确率</span>
+                <strong id="accuracyRate">0%</strong>
+              </div>
+              <div>
+                <span>连续正确</span>
+                <strong id="streakCount">0 题</strong>
+              </div>
+              <div>
+                <span>最近结果</span>
+                <strong id="lastResult">未练习</strong>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel task-panel print-panel">
+            <summary>打印</summary>
+            <label class="field-row">
+              棋盘颜色
+              <select id="boardTheme">
+                <option value="wood">木纹</option>
+                <option value="pale">浅色</option>
+                <option value="white">白底打印</option>
+              </select>
+            </label>
+            <div class="choice-grid">
+              <label class="check-row">
+                <input type="radio" name="printLayout" value="single" />
+                一题一页
+              </label>
+              <label class="check-row">
+                <input type="radio" name="printLayout" value="grid" checked />
+                多题一页
+              </label>
+            </div>
+            <div class="print-section-label">打印内容</div>
+            <label class="check-row">
+              <input type="radio" name="printContent" value="practice" checked />
+              练习页
+            </label>
+            <label class="check-row">
+              <input type="radio" name="printContent" value="answers" />
+              答案页
+            </label>
+            <label class="check-row">
+              <input id="includeAnswers" type="radio" name="printContent" value="both" />
+              练习+答案
+            </label>
+            <select id="printScope">
+              <option value="current">当前变形</option>
+              <option value="joseki">当前定式全部变形</option>
+              <option value="selected">勾选内容</option>
+              <option value="category">当前分类</option>
+              <option value="all">全部定式</option>
+            </select>
+            <div id="printSelectionList" class="print-selection-list"></div>
+            <button type="button" class="primary-button wide" id="printPanelButton">打印 / PDF</button>
+          </details>
         </aside>
 
         <section class="main-board-area" aria-label="定式棋盘">
@@ -161,99 +272,6 @@
           </section>
         </section>
 
-        <aside class="control-panel" id="rightSidebar" aria-label="当前任务面板">
-          <details class="panel task-panel" open>
-            <summary>练习</summary>
-            <p class="practice-ready-hint">定式完成后，选择方式开始练习。</p>
-            <div class="segmented compact" id="modeSelector" role="group" aria-label="练习方式">
-              <button type="button" data-mode="sequence">顺序填空</button>
-              <button type="button" data-mode="free">自由落子</button>
-            </div>
-
-            <div class="setting-block">
-              <h3>批改方式</h3>
-              <div class="segmented compact" id="correctionSelector" role="group" aria-label="批改方式">
-                <button type="button" data-correction="instant">每步提示</button>
-                <button type="button" data-correction="final">练完再判</button>
-              </div>
-              <label class="check-row hint-toggle-row" hidden>
-                <input id="hintToggle" type="checkbox" />
-                开启提示
-              </label>
-              <p class="hint compact-hint">每步提示显示下一手；练完再判落满后批改错点。</p>
-            </div>
-
-            <button type="button" class="primary-button wide" id="startPracticeButton">开始练习</button>
-            <button type="button" class="secondary-button wide" id="undoMoveButton">返回一步</button>
-            <button type="button" class="secondary-button wide" id="showAnswerButton">显示答案</button>
-          </details>
-
-          <details class="panel task-panel" open>
-            <summary>统计</summary>
-            <div class="setting-block stats-grid">
-              <div>
-                <span>已练</span>
-                <strong id="attemptCount">0 次</strong>
-              </div>
-              <div>
-                <span>正确率</span>
-                <strong id="accuracyRate">0%</strong>
-              </div>
-              <div>
-                <span>连续正确</span>
-                <strong id="streakCount">0 题</strong>
-              </div>
-              <div>
-                <span>最近结果</span>
-                <strong id="lastResult">未练习</strong>
-              </div>
-            </div>
-          </details>
-
-          <details class="panel task-panel print-panel">
-            <summary>打印</summary>
-            <label class="field-row">
-              棋盘颜色
-              <select id="boardTheme">
-                <option value="wood">木纹</option>
-                <option value="pale">浅色</option>
-                <option value="white">白底打印</option>
-              </select>
-            </label>
-            <div class="choice-grid">
-              <label class="check-row">
-                <input type="radio" name="printLayout" value="single" />
-                一题一页
-              </label>
-              <label class="check-row">
-                <input type="radio" name="printLayout" value="grid" checked />
-                多题一页
-              </label>
-            </div>
-            <div class="print-section-label">打印内容</div>
-            <label class="check-row">
-              <input type="radio" name="printContent" value="practice" checked />
-              练习页
-            </label>
-            <label class="check-row">
-              <input type="radio" name="printContent" value="answers" />
-              答案页
-            </label>
-            <label class="check-row">
-              <input id="includeAnswers" type="radio" name="printContent" value="both" />
-              练习+答案
-            </label>
-            <select id="printScope">
-              <option value="current">当前变形</option>
-              <option value="joseki">当前定式全部变形</option>
-              <option value="selected">勾选内容</option>
-              <option value="category">当前分类</option>
-              <option value="all">全部定式</option>
-            </select>
-            <div id="printSelectionList" class="print-selection-list"></div>
-            <button type="button" class="primary-button wide" id="printPanelButton">打印 / PDF</button>
-          </details>
-        </aside>
       </main>
     </div>
 
@@ -277,7 +295,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260523-supabase-sync"></script>
-    <script src="supabase-sync.js?v=20260524"></script>
+    <script src="app.js?v=20260528-cloud-sync"></script>
+    <script src="supabase-sync.js?v=20260528-cloud-sync"></script>
   </body>
 </html>
