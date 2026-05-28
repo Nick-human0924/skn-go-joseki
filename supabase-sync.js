@@ -1,8 +1,11 @@
 (function () {
   "use strict";
 
+  if (window.GO_JOSEKI_APP_OWNS_SUPABASE_SYNC) return;
+
   const STORAGE_KEY = "go-joseki-memory:v1";
   const LAST_SYNC_KEY = "go-joseki-memory:last-cloud-sync";
+  const REMOTE_RELOAD_KEY = "go-joseki-memory:last-remote-reload";
   const TABLE = "go_joseki_stores";
   const DEBOUNCE_MS = 900;
   const CHANGE_SCAN_MS = 2500;
@@ -133,6 +136,17 @@
     updateUi();
   }
 
+  function maybeReloadAfterRemotePull(updatedAt) {
+    const stamp = updatedAt || "unknown";
+    if (sessionStorage.getItem(REMOTE_RELOAD_KEY) === stamp) {
+      setStatus("已从云端拉取账号数据", false);
+      return;
+    }
+    sessionStorage.setItem(REMOTE_RELOAD_KEY, stamp);
+    setStatus("已从云端拉取账号数据，正在刷新页面", false);
+    window.setTimeout(() => window.location.reload(), 250);
+  }
+
   async function uploadLocalStore(reason) {
     if (!state.client || !state.user || state.uploading) return;
     state.uploading = true;
@@ -189,8 +203,7 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data.store));
       state.lastStoreSnapshot = currentStoreSnapshot();
       if (data.updated_at) localStorage.setItem(LAST_SYNC_KEY, data.updated_at);
-      setStatus("已从云端拉取账号数据，正在刷新页面", false);
-      window.setTimeout(() => window.location.reload(), 250);
+      maybeReloadAfterRemotePull(data.updated_at);
       return;
     }
 
