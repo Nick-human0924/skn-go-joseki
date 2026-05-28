@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>围棋定式记忆</title>
-    <link rel="stylesheet" href="styles.css?v=20260528-refresh-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260528-choice-mode" />
   </head>
   <body>
     <div class="app-shell">
@@ -87,9 +87,10 @@
           <details class="panel task-panel" open>
             <summary>练习</summary>
             <p class="practice-ready-hint">定式完成后，选择方式开始练习。</p>
-            <div class="segmented compact" id="modeSelector" role="group" aria-label="练习方式">
+            <div class="segmented compact practice-modes" id="modeSelector" role="group" aria-label="练习方式">
               <button type="button" data-mode="sequence">顺序填空</button>
               <button type="button" data-mode="free">自由落子</button>
+              <button type="button" data-mode="choice">最佳点</button>
             </div>
 
             <div class="setting-block">
@@ -222,6 +223,7 @@
               <button type="button" data-tool="black"><span class="tool-dot black-dot"></span>黑棋</button>
               <button type="button" data-tool="white"><span class="tool-dot white-dot"></span>白棋</button>
               <button type="button" data-tool="answer"><span class="tool-dot answer-dot"></span>答案点</button>
+              <button type="button" data-tool="choice"><span class="tool-dot choice-dot"></span>候选点</button>
               <button type="button" data-tool="erase"><span class="tool-dot erase-dot"></span>橡皮</button>
             </div>
             <div class="edit-recording-block">
@@ -295,6 +297,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260528-refresh-fix"></script>
+    <script src="app.js?v=20260528-choice-mode"></script>
   </body>
 </html>
