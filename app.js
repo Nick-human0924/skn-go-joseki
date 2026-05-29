@@ -246,6 +246,7 @@ function createDefaultStore() {
     settings: {
       boardTheme: "wood",
     },
+    libraryArchives: [],
   };
 }
 
@@ -273,6 +274,7 @@ function loadStore() {
       settings: {
         boardTheme: normalizeBoardTheme(parsed.settings?.boardTheme),
       },
+      libraryArchives: parsed.libraryArchives || [],
     });
   } catch (error) {
     console.warn("无法读取本地数据，已载入默认数据。", error);
@@ -660,6 +662,43 @@ function createRecordArchiveSnapshot(record) {
   };
 }
 
+function createLibraryArchiveSnapshot(data = store) {
+  const raw = {
+    version: 1,
+    categories: structuredClone(data.categories || []),
+    records: structuredClone(data.records || []),
+    stats: structuredClone(data.stats || {}),
+    settings: structuredClone(data.settings || { boardTheme: "wood" }),
+    libraryArchives: [],
+  };
+  const normalized = normalizeStoreData(raw);
+  return {
+    version: 1,
+    categories: normalized.categories,
+    records: normalized.records,
+    stats: normalized.stats,
+    settings: normalized.settings,
+  };
+}
+
+function normalizeLibraryArchives(archives) {
+  if (!Array.isArray(archives)) return [];
+  return archives
+    .map((archive) => {
+      const createdAt = archive?.createdAt || new Date().toISOString();
+      const snapshot = createLibraryArchiveSnapshot(archive?.snapshot || archive?.store || {});
+      return {
+        id: archive?.id || createId("lib"),
+        name: String(archive?.name || "").trim() || `整库备份 ${formatArchiveTime(createdAt)}`,
+        createdAt,
+        snapshot,
+      };
+    })
+    .filter((archive) => archive.snapshot.records.length || archive.snapshot.categories.length)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 20);
+}
+
 function advantageLabel(value) {
   const normalized = normalizeAdvantage(value);
   if (normalized === "black") return "黑优";
@@ -692,6 +731,7 @@ function normalizeStoreData(data) {
     settings: {
       boardTheme: normalizeBoardTheme(data.settings?.boardTheme),
     },
+    libraryArchives: normalizeLibraryArchives(data.libraryArchives || []),
   };
 }
 
@@ -877,6 +917,65 @@ function deleteVariantRecord(record) {
 }
 
 function archiveCurrentRecord() {
+  const now = new Date().toISOString();
+  const archives = normalizeLibraryArchives(store.libraryArchives || []);
+  store.libraryArchives = normalizeLibraryArchives([
+    {
+      id: createId("lib"),
+      name: `${formatArchiveTime(now)} · ${store.records.length}题`,
+      createdAt: now,
+      snapshot: createLibraryArchiveSnapshot(store),
+    },
+    ...archives,
+  ]);
+  saveStore();
+  renderArchiveControls();
+  renderCloudSync();
+  setFeedback("已备份整个定式库。", "good");
+}
+
+function selectedArchive() {
+  if (!dom.archiveSelect) return null;
+  const archives = normalizeLibraryArchives(store.libraryArchives || []);
+  const archiveId = dom.archiveSelect.value;
+  return archives.find((archive) => archive.id === archiveId) || archives[0] || null;
+}
+
+function restoreSelectedArchive() {
+  const archive = selectedArchive();
+  if (!archive) return;
+  if (!window.confirm(`恢复整库备份“${archive.name}”？当前全部定式、分类和练习统计会被覆盖。`)) return;
+  const archives = normalizeLibraryArchives(store.libraryArchives || []);
+  const snapshot = archive.snapshot;
+  store = normalizeStoreData({
+    version: 1,
+    categories: structuredClone(snapshot.categories || []),
+    records: structuredClone(snapshot.records || []),
+    stats: structuredClone(snapshot.stats || {}),
+    settings: structuredClone(snapshot.settings || { boardTheme: "wood" }),
+    libraryArchives: archives,
+  });
+  ui.selectedCategoryId = "all";
+  ui.selectedTags.clear();
+  ui.selectedPrintIds.clear();
+  ensureValidSelection();
+  resetPracticeState();
+  saveStore();
+  render();
+  setFeedback(`已恢复整库备份：${archive.name}`, "good");
+}
+
+function deleteSelectedArchive() {
+  const archive = selectedArchive();
+  if (!archive) return;
+  if (!window.confirm(`删除整库备份“${archive.name}”？`)) return;
+  store.libraryArchives = normalizeLibraryArchives(store.libraryArchives || []).filter((item) => item.id !== archive.id);
+  saveStore();
+  renderArchiveControls();
+  setFeedback("已删除所选整库备份。", "info");
+}
+
+function archiveCurrentRecordLegacy() {
   const record = selectedRecord();
   if (!record) return;
   const now = new Date().toISOString();
@@ -895,15 +994,15 @@ function archiveCurrentRecord() {
   setFeedback("已存档当前棋谱。", "good");
 }
 
-function selectedArchive(record) {
+function selectedRecordArchive(record) {
   if (!record || !dom.archiveSelect) return null;
   const archiveId = dom.archiveSelect.value;
   return (record.archives || []).find((archive) => archive.id === archiveId) || record.archives?.[0] || null;
 }
 
-function restoreSelectedArchive() {
+function restoreSelectedRecordArchive() {
   const record = selectedRecord();
-  const archive = selectedArchive(record);
+  const archive = selectedRecordArchive(record);
   if (!record || !archive) return;
   if (!window.confirm(`恢复“${archive.name}”？当前未存档的修改会被覆盖。`)) return;
   const snapshot = archive.snapshot;
@@ -924,9 +1023,9 @@ function restoreSelectedArchive() {
   setFeedback(`已恢复存档：${archive.name}`, "good");
 }
 
-function deleteSelectedArchive() {
+function deleteSelectedRecordArchive() {
   const record = selectedRecord();
-  const archive = selectedArchive(record);
+  const archive = selectedRecordArchive(record);
   if (!record || !archive) return;
   if (!window.confirm(`删除存档“${archive.name}”？`)) return;
   record.archives = (record.archives || []).filter((item) => item.id !== archive.id);
@@ -1282,7 +1381,7 @@ function renderEditor() {
     dom.recordTags.value = "";
     dom.customBoardSize.value = 19;
     dom.recordNotes.value = "";
-    renderArchiveControls(null);
+    renderArchiveControls();
     document.querySelectorAll(".board-size-controls button").forEach((button) => {
       button.classList.remove("active");
     });
@@ -1308,17 +1407,18 @@ function renderEditor() {
   document.querySelectorAll(".board-size-controls button").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.size) === record.boardSize);
   });
-  renderArchiveControls(record);
+  renderArchiveControls();
 }
 
-function renderArchiveControls(record = selectedRecord()) {
+function renderArchiveControls() {
   if (!dom.archiveSelect) return;
-  const archives = record?.archives || [];
+  const archives = normalizeLibraryArchives(store.libraryArchives || []);
+  store.libraryArchives = archives;
   dom.archiveSelect.innerHTML = "";
   if (!archives.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "暂无存档";
+    option.textContent = "暂无整库备份";
     dom.archiveSelect.appendChild(option);
   } else {
     archives.forEach((archive) => {
@@ -1328,13 +1428,12 @@ function renderArchiveControls(record = selectedRecord()) {
       dom.archiveSelect.appendChild(option);
     });
   }
-  const hasRecord = Boolean(record);
   const hasArchive = Boolean(archives.length);
-  dom.archiveRecordButton.disabled = !hasRecord;
-  dom.archiveSelect.disabled = !hasRecord || !hasArchive;
-  dom.restoreArchiveButton.disabled = !hasRecord || !hasArchive;
-  dom.deleteArchiveButton.disabled = !hasRecord || !hasArchive;
-  dom.archiveStatus.textContent = hasArchive ? `${archives.length} 个存档，最多保留 20 个` : "暂无存档";
+  dom.archiveRecordButton.disabled = !store.records.length;
+  dom.archiveSelect.disabled = !hasArchive;
+  dom.restoreArchiveButton.disabled = !hasArchive;
+  dom.deleteArchiveButton.disabled = !hasArchive;
+  dom.archiveStatus.textContent = hasArchive ? `${archives.length} 个整库备份，最多保留 20 个` : "暂无整库备份";
 }
 
 function setEditorFieldsDisabled(disabled) {
@@ -1351,10 +1450,6 @@ function setEditorFieldsDisabled(disabled) {
     dom.duplicateRecordButton,
     dom.deleteRecordButton,
     dom.deleteJosekiButton,
-    dom.archiveRecordButton,
-    dom.archiveSelect,
-    dom.restoreArchiveButton,
-    dom.deleteArchiveButton,
     dom.clearVariationButton,
   ].forEach((element) => {
     if (element) element.disabled = disabled;
@@ -2997,6 +3092,9 @@ function importData(imported) {
     store.settings = store.settings || { boardTheme: "wood" };
     store.settings.boardTheme = normalizeBoardTheme(imported.settings.boardTheme);
   }
+  if (Array.isArray(imported.libraryArchives)) {
+    store.libraryArchives = normalizeLibraryArchives([...(store.libraryArchives || []), ...imported.libraryArchives]);
+  }
   ui.selectedRecordId = store.records.at(-1)?.id || ui.selectedRecordId;
 }
 
@@ -3019,6 +3117,7 @@ function exportJson(data, label) {
     records: data.records,
     stats: data.stats || {},
     settings: data.settings || store.settings || { boardTheme: "wood" },
+    libraryArchives: data.libraryArchives || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const link = document.createElement("a");

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>围棋定式记忆</title>
-    <link rel="stylesheet" href="styles.css?v=20260529-archives" />
+    <link rel="stylesheet" href="styles.css?v=20260529-library-archives" />
   </head>
   <body>
     <div class="app-shell">
@@ -211,11 +211,11 @@
               <button type="button" id="deleteRecordButton" class="danger-button" title="删除当前变形">删变形</button>
               <button type="button" id="deleteJosekiButton" class="danger-button" title="删除当前定式及全部变形">删定式</button>
             </div>
-            <div class="archive-controls" aria-label="棋谱存档">
-              <button type="button" id="archiveRecordButton" class="secondary-button" title="保存当前变形的完整快照">存档当前</button>
-              <select id="archiveSelect" aria-label="选择存档"></select>
-              <button type="button" id="restoreArchiveButton" title="恢复所选存档">恢复</button>
-              <button type="button" id="deleteArchiveButton" class="danger-button" title="删除所选存档">删存档</button>
+            <div class="archive-controls" aria-label="整库备份">
+              <button type="button" id="archiveRecordButton" class="secondary-button" title="备份当前全部定式、分类和练习统计">备份全库</button>
+              <select id="archiveSelect" aria-label="选择整库备份"></select>
+              <button type="button" id="restoreArchiveButton" title="恢复所选整库备份">恢复全库</button>
+              <button type="button" id="deleteArchiveButton" class="danger-button" title="删除所选整库备份">删备份</button>
               <span id="archiveStatus" class="archive-status">暂无存档</span>
             </div>
           </section>
@@ -304,6 +304,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260529-archives"></script>
+    <script src="app.js?v=20260529-library-archives"></script>
   </body>
 </html>
