@@ -57,6 +57,11 @@ const dom = {
   duplicateRecordButton: document.getElementById("duplicateRecordButton"),
   deleteRecordButton: document.getElementById("deleteRecordButton"),
   deleteJosekiButton: document.getElementById("deleteJosekiButton"),
+  archiveRecordButton: document.getElementById("archiveRecordButton"),
+  archiveSelect: document.getElementById("archiveSelect"),
+  restoreArchiveButton: document.getElementById("restoreArchiveButton"),
+  deleteArchiveButton: document.getElementById("deleteArchiveButton"),
+  archiveStatus: document.getElementById("archiveStatus"),
   shufflePracticeButton: document.getElementById("shufflePracticeButton"),
   resetPracticeButton: document.getElementById("resetPracticeButton"),
   importButton: document.getElementById("importButton"),
@@ -569,6 +574,17 @@ function formatSyncTime(isoString) {
   });
 }
 
+function formatArchiveTime(isoString) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return "未知时间";
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function readableError(error) {
   return error?.message || String(error || "未知错误");
 }
@@ -606,6 +622,44 @@ function choiceLabel(index) {
   return letters[index] || String(index + 1);
 }
 
+function normalizeRecordArchives(archives, boardSize = 19) {
+  if (!Array.isArray(archives)) return [];
+  return archives
+    .map((archive) => {
+      const snapshot = archive?.snapshot || archive?.record || {};
+      const size = clampBoardSize(snapshot.boardSize || boardSize || 9);
+      return {
+        id: archive.id || createId("arc"),
+        name: String(archive.name || "").trim() || `存档 ${formatArchiveTime(archive.createdAt || new Date().toISOString())}`,
+        createdAt: archive.createdAt || new Date().toISOString(),
+        snapshot: {
+          variantName: String(snapshot.variantName || "基础变化"),
+          advantage: normalizeAdvantage(snapshot.advantage),
+          boardSize: size,
+          initialMoves: sanitizeMoves(snapshot.initialMoves || []).filter((item) => item.x < size && item.y < size),
+          choicePoints: normalizeChoicePoints(snapshot.choicePoints || [], size),
+          answerMoves: sanitizeMoves(snapshot.answerMoves || []).filter((item) => item.x < size && item.y < size),
+          notes: String(snapshot.notes || ""),
+        },
+      };
+    })
+    .filter((archive) => archive.snapshot)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 20);
+}
+
+function createRecordArchiveSnapshot(record) {
+  return {
+    variantName: record.variantName || "基础变化",
+    advantage: normalizeAdvantage(record.advantage),
+    boardSize: clampBoardSize(record.boardSize),
+    initialMoves: structuredClone(record.initialMoves || []),
+    choicePoints: structuredClone(record.choicePoints || []),
+    answerMoves: structuredClone(record.answerMoves || []),
+    notes: record.notes || "",
+  };
+}
+
 function advantageLabel(value) {
   const normalized = normalizeAdvantage(value);
   if (normalized === "black") return "黑优";
@@ -627,6 +681,7 @@ function normalizeStoreData(data) {
     if (!Array.isArray(record.initialMoves)) record.initialMoves = [];
     if (!Array.isArray(record.answerMoves)) record.answerMoves = [];
     record.choicePoints = normalizeChoicePoints(record.choicePoints || [], record.boardSize);
+    record.archives = normalizeRecordArchives(record.archives || [], record.boardSize);
     return record;
   });
   return {
@@ -681,6 +736,7 @@ function createBlankRecord() {
     initialMoves: [],
     choicePoints: [],
     answerMoves: [],
+    archives: [],
     notes: "",
     createdAt: now,
     updatedAt: now,
@@ -818,6 +874,65 @@ function deleteVariantRecord(record) {
   saveStore();
   resetPracticeState();
   render();
+}
+
+function archiveCurrentRecord() {
+  const record = selectedRecord();
+  if (!record) return;
+  const now = new Date().toISOString();
+  record.archives = normalizeRecordArchives(record.archives || [], record.boardSize);
+  record.archives.unshift({
+    id: createId("arc"),
+    name: `${formatArchiveTime(now)} · ${record.answerMoves.length}手`,
+    createdAt: now,
+    snapshot: createRecordArchiveSnapshot(record),
+  });
+  record.archives = normalizeRecordArchives(record.archives, record.boardSize);
+  record.updatedAt = now;
+  saveStore();
+  renderEditor();
+  renderCloudSync();
+  setFeedback("已存档当前棋谱。", "good");
+}
+
+function selectedArchive(record) {
+  if (!record || !dom.archiveSelect) return null;
+  const archiveId = dom.archiveSelect.value;
+  return (record.archives || []).find((archive) => archive.id === archiveId) || record.archives?.[0] || null;
+}
+
+function restoreSelectedArchive() {
+  const record = selectedRecord();
+  const archive = selectedArchive(record);
+  if (!record || !archive) return;
+  if (!window.confirm(`恢复“${archive.name}”？当前未存档的修改会被覆盖。`)) return;
+  const snapshot = archive.snapshot;
+  const archives = normalizeRecordArchives(record.archives || [], record.boardSize);
+  record.variantName = snapshot.variantName || "基础变化";
+  record.advantage = normalizeAdvantage(snapshot.advantage);
+  record.boardSize = clampBoardSize(snapshot.boardSize);
+  record.initialMoves = sanitizeMoves(snapshot.initialMoves || []).filter((item) => item.x < record.boardSize && item.y < record.boardSize);
+  record.choicePoints = normalizeChoicePoints(snapshot.choicePoints || [], record.boardSize);
+  record.answerMoves = sanitizeMoves(snapshot.answerMoves || []).filter((item) => item.x < record.boardSize && item.y < record.boardSize);
+  record.notes = snapshot.notes || "";
+  record.archives = archives;
+  renumberRecord(record);
+  resetPracticeState();
+  ui.selectedMoveIndex = -1;
+  touchRecord(record);
+  render();
+  setFeedback(`已恢复存档：${archive.name}`, "good");
+}
+
+function deleteSelectedArchive() {
+  const record = selectedRecord();
+  const archive = selectedArchive(record);
+  if (!record || !archive) return;
+  if (!window.confirm(`删除存档“${archive.name}”？`)) return;
+  record.archives = (record.archives || []).filter((item) => item.id !== archive.id);
+  touchRecord(record);
+  renderEditor();
+  setFeedback("已删除所选存档。", "info");
 }
 
 function moveVariantRecord(record, direction) {
@@ -1167,6 +1282,7 @@ function renderEditor() {
     dom.recordTags.value = "";
     dom.customBoardSize.value = 19;
     dom.recordNotes.value = "";
+    renderArchiveControls(null);
     document.querySelectorAll(".board-size-controls button").forEach((button) => {
       button.classList.remove("active");
     });
@@ -1192,6 +1308,33 @@ function renderEditor() {
   document.querySelectorAll(".board-size-controls button").forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.size) === record.boardSize);
   });
+  renderArchiveControls(record);
+}
+
+function renderArchiveControls(record = selectedRecord()) {
+  if (!dom.archiveSelect) return;
+  const archives = record?.archives || [];
+  dom.archiveSelect.innerHTML = "";
+  if (!archives.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无存档";
+    dom.archiveSelect.appendChild(option);
+  } else {
+    archives.forEach((archive) => {
+      const option = document.createElement("option");
+      option.value = archive.id;
+      option.textContent = archive.name;
+      dom.archiveSelect.appendChild(option);
+    });
+  }
+  const hasRecord = Boolean(record);
+  const hasArchive = Boolean(archives.length);
+  dom.archiveRecordButton.disabled = !hasRecord;
+  dom.archiveSelect.disabled = !hasRecord || !hasArchive;
+  dom.restoreArchiveButton.disabled = !hasRecord || !hasArchive;
+  dom.deleteArchiveButton.disabled = !hasRecord || !hasArchive;
+  dom.archiveStatus.textContent = hasArchive ? `${archives.length} 个存档，最多保留 20 个` : "暂无存档";
 }
 
 function setEditorFieldsDisabled(disabled) {
@@ -1208,6 +1351,10 @@ function setEditorFieldsDisabled(disabled) {
     dom.duplicateRecordButton,
     dom.deleteRecordButton,
     dom.deleteJosekiButton,
+    dom.archiveRecordButton,
+    dom.archiveSelect,
+    dom.restoreArchiveButton,
+    dom.deleteArchiveButton,
     dom.clearVariationButton,
   ].forEach((element) => {
     if (element) element.disabled = disabled;
@@ -2637,6 +2784,12 @@ dom.deleteJosekiButton.addEventListener("click", () => {
   deleteJosekiGroup(record);
 });
 
+dom.archiveRecordButton?.addEventListener("click", archiveCurrentRecord);
+
+dom.restoreArchiveButton?.addEventListener("click", restoreSelectedArchive);
+
+dom.deleteArchiveButton?.addEventListener("click", deleteSelectedArchive);
+
 dom.editRecordButton.addEventListener("click", () => {
   if (!selectedRecord()) return;
   ui.mode = "edit";
@@ -2834,6 +2987,7 @@ function importData(imported) {
       initialMoves: sanitizeMoves(record.initialMoves || []),
       choicePoints: normalizeChoicePoints(record.choicePoints || [], record.boardSize || 9),
       answerMoves: sanitizeMoves(record.answerMoves || []),
+      archives: normalizeRecordArchives(record.archives || [], record.boardSize || 9),
       notes: record.notes || "",
       createdAt: record.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -2847,7 +3001,7 @@ function importData(imported) {
 }
 
 function sanitizeMoves(moves) {
-  return moves
+  return (Array.isArray(moves) ? moves : [])
     .map((item, index) => ({
       x: Number(item.x),
       y: Number(item.y),
