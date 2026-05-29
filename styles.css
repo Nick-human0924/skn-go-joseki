@@ -574,6 +574,7 @@ textarea {
   width: 100%;
   min-width: 0;
   min-height: clamp(600px, calc(100vh - 350px), 900px);
+  overflow: visible;
 }
 
 .go-board {
@@ -604,6 +605,7 @@ textarea {
   background: var(--board-bg);
   box-shadow: var(--board-shadow);
   overflow: hidden;
+  touch-action: pan-y pinch-zoom;
 }
 
 .go-board[data-theme="pale"] {
@@ -1465,7 +1467,8 @@ textarea {
   grid-template-columns: minmax(230px, 0.36fr) minmax(0, 1fr);
   grid-template-areas:
     "title meta"
-    "size actions";
+    "size actions"
+    "archive archive";
   padding: 12px 14px;
   background: linear-gradient(180deg, #fff, #fbfdfc);
 }
@@ -1610,11 +1613,9 @@ textarea {
 
 .board-wrap {
   min-height: clamp(560px, calc(100vh - 250px), 900px);
-  overflow: auto;
+  overflow: visible;
   max-width: 100%;
   min-width: 0;
-  scrollbar-gutter: stable;
-  overscroll-behavior: contain;
 }
 
 .go-board {
