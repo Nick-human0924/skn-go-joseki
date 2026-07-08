@@ -288,7 +288,34 @@ function saveStore() {
 }
 
 function saveLocalStore() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  } catch (error) {
+    const isQuotaError =
+      error?.name === "QuotaExceededError" ||
+      error?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      error?.code === 22 ||
+      error?.code === 1014;
+    if (!isQuotaError || !store.libraryArchives?.length) throw error;
+    let removedCount = 0;
+    while (store.libraryArchives.length) {
+      store.libraryArchives = store.libraryArchives.slice(0, -1);
+      removedCount += 1;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        if (dom.feedback) setFeedback(`本地空间不足，已删除 ${removedCount} 个最旧整库备份后保存。`, "bad");
+        return;
+      } catch (retryError) {
+        const retryIsQuota =
+          retryError?.name === "QuotaExceededError" ||
+          retryError?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+          retryError?.code === 22 ||
+          retryError?.code === 1014;
+        if (!retryIsQuota) throw retryError;
+      }
+    }
+    throw error;
+  }
 }
 
 function supabaseSettings() {
@@ -671,7 +698,7 @@ function createLibraryArchiveSnapshot(data = store) {
     settings: structuredClone(data.settings || { boardTheme: "wood" }),
     libraryArchives: [],
   };
-  const normalized = normalizeStoreData(raw);
+  const normalized = normalizeStoreData(raw, { normalizeArchives: false });
   return {
     version: 1,
     categories: normalized.categories,
@@ -706,7 +733,8 @@ function advantageLabel(value) {
   return "平手";
 }
 
-function normalizeStoreData(data) {
+function normalizeStoreData(data, options = {}) {
+  const normalizeArchives = options.normalizeArchives !== false;
   const seenJosekiByTitle = new Map();
   const records = (data.records || []).map((record) => {
     if (!record.josekiId) {
@@ -731,7 +759,7 @@ function normalizeStoreData(data) {
     settings: {
       boardTheme: normalizeBoardTheme(data.settings?.boardTheme),
     },
-    libraryArchives: normalizeLibraryArchives(data.libraryArchives || []),
+    libraryArchives: normalizeArchives ? normalizeLibraryArchives(data.libraryArchives || []) : data.libraryArchives || [],
   };
 }
 
@@ -755,7 +783,7 @@ function ensureValidSelection() {
     const record = createBlankRecord();
     store.records.push(record);
   }
-  store = normalizeStoreData(store);
+  store = normalizeStoreData(store, { normalizeArchives: false });
   store.records.forEach((record) => renumberRecord(record));
   const visibleRecords = filteredRecords();
   const selectedIsVisible = visibleRecords.some((record) => record.id === ui.selectedRecordId);
@@ -1412,8 +1440,7 @@ function renderEditor() {
 
 function renderArchiveControls() {
   if (!dom.archiveSelect) return;
-  const archives = normalizeLibraryArchives(store.libraryArchives || []);
-  store.libraryArchives = archives;
+  const archives = Array.isArray(store.libraryArchives) ? store.libraryArchives : [];
   dom.archiveSelect.innerHTML = "";
   if (!archives.length) {
     const option = document.createElement("option");
