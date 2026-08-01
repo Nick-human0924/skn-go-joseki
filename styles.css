@@ -1247,6 +1247,71 @@ textarea {
   color: var(--muted);
 }
 
+.print-history-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.print-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.print-history-heading strong {
+  font-size: 14px;
+}
+
+.print-history-summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.print-history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.print-history-item {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.print-history-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.print-history-meta strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.print-history-meta span,
+.print-history-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.print-history-item p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .field-row {
   display: grid;
   gap: 6px;

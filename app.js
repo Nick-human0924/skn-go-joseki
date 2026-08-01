@@ -4,6 +4,7 @@ const STORAGE_KEY = "go-joseki-memory:v1";
 const LAST_SYNC_KEY = "go-joseki-memory:last-cloud-sync";
 const SUPABASE_TABLE = "go_joseki_stores";
 const CLOUD_SAVE_DEBOUNCE_MS = 900;
+const PRINT_HISTORY_LIMIT = 80;
 
 window.GO_JOSEKI_APP_OWNS_SUPABASE_SYNC = true;
 
@@ -75,6 +76,9 @@ const dom = {
   boardTheme: document.getElementById("boardTheme"),
   printScope: document.getElementById("printScope"),
   printSelectionList: document.getElementById("printSelectionList"),
+  printHistorySummary: document.getElementById("printHistorySummary"),
+  printHistoryList: document.getElementById("printHistoryList"),
+  clearPrintHistoryButton: document.getElementById("clearPrintHistoryButton"),
   includeAnswers: document.getElementById("includeAnswers"),
   printRoot: document.getElementById("printRoot"),
   practiceSummary: document.getElementById("practiceSummary"),
@@ -247,6 +251,7 @@ function createDefaultStore() {
       boardTheme: "wood",
     },
     libraryArchives: [],
+    printHistory: [],
   };
 }
 
@@ -275,6 +280,7 @@ function loadStore() {
         boardTheme: normalizeBoardTheme(parsed.settings?.boardTheme),
       },
       libraryArchives: parsed.libraryArchives || [],
+      printHistory: parsed.printHistory || [],
     });
   } catch (error) {
     console.warn("无法读取本地数据，已载入默认数据。", error);
@@ -296,9 +302,39 @@ function saveLocalStore() {
       error?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
       error?.code === 22 ||
       error?.code === 1014;
-    if (!isQuotaError || !store.libraryArchives?.length) throw error;
+    if (!isQuotaError || (!store.libraryArchives?.length && !store.printHistory?.length)) throw error;
     let removedCount = 0;
-    while (store.libraryArchives.length) {
+    if (store.printHistory?.length > 20) {
+      store.printHistory = store.printHistory.slice(0, 20);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        if (dom.feedback) setFeedback("本地空间不足，已只保留最近 20 条打印记录后保存。", "bad");
+        return;
+      } catch (retryError) {
+        const retryIsQuota =
+          retryError?.name === "QuotaExceededError" ||
+          retryError?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+          retryError?.code === 22 ||
+          retryError?.code === 1014;
+        if (!retryIsQuota) throw retryError;
+      }
+    }
+    if (!store.libraryArchives?.length && store.printHistory?.length) {
+      store.printHistory = [];
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        if (dom.feedback) setFeedback("本地空间不足，已清空打印记录后保存。", "bad");
+        return;
+      } catch (retryError) {
+        const retryIsQuota =
+          retryError?.name === "QuotaExceededError" ||
+          retryError?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+          retryError?.code === 22 ||
+          retryError?.code === 1014;
+        if (!retryIsQuota) throw retryError;
+      }
+    }
+    while (store.libraryArchives?.length) {
       store.libraryArchives = store.libraryArchives.slice(0, -1);
       removedCount += 1;
       try {
@@ -726,6 +762,32 @@ function normalizeLibraryArchives(archives) {
     .slice(0, 20);
 }
 
+function normalizePrintHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .map((entry) => {
+      const printedAt = entry?.printedAt || entry?.createdAt || new Date().toISOString();
+      const recordCount = Number(entry?.recordCount || 0);
+      return {
+        id: entry?.id || createId("prt"),
+        printedAt,
+        scope: normalizePrintScope(entry?.scope),
+        scopeLabel: String(entry?.scopeLabel || printScopeLabel(entry?.scope)).trim() || "当前变形",
+        contentMode: normalizePrintContentMode(entry?.contentMode),
+        contentLabel: printContentLabel(entry?.contentMode),
+        layout: entry?.layout === "single" ? "single" : "grid",
+        recordCount: Number.isFinite(recordCount) && recordCount >= 0 ? recordCount : 0,
+        recordTitles: (Array.isArray(entry?.recordTitles) ? entry.recordTitles : [])
+          .map((title) => String(title || "").trim())
+          .filter(Boolean)
+          .slice(0, 12),
+      };
+    })
+    .filter((entry) => !Number.isNaN(new Date(entry.printedAt).getTime()))
+    .sort((a, b) => new Date(b.printedAt) - new Date(a.printedAt))
+    .slice(0, PRINT_HISTORY_LIMIT);
+}
+
 function advantageLabel(value) {
   const normalized = normalizeAdvantage(value);
   if (normalized === "black") return "黑优";
@@ -760,6 +822,7 @@ function normalizeStoreData(data, options = {}) {
       boardTheme: normalizeBoardTheme(data.settings?.boardTheme),
     },
     libraryArchives: normalizeArchives ? normalizeLibraryArchives(data.libraryArchives || []) : data.libraryArchives || [],
+    printHistory: normalizePrintHistory(data.printHistory || []),
   };
 }
 
@@ -1129,6 +1192,7 @@ function render() {
   renderSideRecordList();
   renderCards();
   renderPrintSelection();
+  renderPrintHistory();
   renderLayoutState();
   renderCloudSync();
 }
@@ -1790,6 +1854,34 @@ function renderPrintSelection() {
       wrapper.appendChild(label);
     });
     dom.printSelectionList.appendChild(wrapper);
+  });
+}
+
+function renderPrintHistory() {
+  if (!dom.printHistoryList || !dom.printHistorySummary) return;
+  const history = normalizePrintHistory(store.printHistory || []);
+  store.printHistory = history;
+  dom.printHistoryList.innerHTML = "";
+  if (!history.length) {
+    dom.printHistorySummary.textContent = "暂无打印记录";
+    dom.printHistoryList.innerHTML = `<div class="empty-state small-empty">打印或保存 PDF 后会显示在这里。</div>`;
+    if (dom.clearPrintHistoryButton) dom.clearPrintHistoryButton.disabled = true;
+    return;
+  }
+  dom.printHistorySummary.textContent = `最近 ${history.length} 次，最后 ${formatArchiveTime(history[0].printedAt)}`;
+  if (dom.clearPrintHistoryButton) dom.clearPrintHistoryButton.disabled = false;
+  history.slice(0, 20).forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = "print-history-item";
+    const titles = entry.recordTitles.length ? entry.recordTitles.join("、") : "未记录题目";
+    item.innerHTML = `
+      <div class="print-history-meta">
+        <strong>${escapeHtml(formatArchiveTime(entry.printedAt))}</strong>
+        <span>${escapeHtml(entry.scopeLabel)} · ${escapeHtml(entry.contentLabel)} · ${entry.recordCount}题</span>
+      </div>
+      <p>${escapeHtml(titles)}</p>
+    `;
+    dom.printHistoryList.appendChild(item);
   });
 }
 
@@ -3019,6 +3111,15 @@ dom.printPanelButton?.addEventListener("click", () => {
   if (preparePrint()) window.print();
 });
 
+dom.clearPrintHistoryButton?.addEventListener("click", () => {
+  if (!store.printHistory?.length) return;
+  if (!window.confirm("清空所有打印记录？")) return;
+  store.printHistory = [];
+  saveStore();
+  renderPrintHistory();
+  setFeedback("打印记录已清空。", "info");
+});
+
 dom.summaryCloseButton?.addEventListener("click", () => {
   dom.practiceSummary.hidden = true;
 });
@@ -3122,6 +3223,9 @@ function importData(imported) {
   if (Array.isArray(imported.libraryArchives)) {
     store.libraryArchives = normalizeLibraryArchives([...(store.libraryArchives || []), ...imported.libraryArchives]);
   }
+  if (Array.isArray(imported.printHistory)) {
+    store.printHistory = normalizePrintHistory([...(store.printHistory || []), ...imported.printHistory]);
+  }
   ui.selectedRecordId = store.records.at(-1)?.id || ui.selectedRecordId;
 }
 
@@ -3145,6 +3249,7 @@ function exportJson(data, label) {
     stats: data.stats || {},
     settings: data.settings || store.settings || { boardTheme: "wood" },
     libraryArchives: data.libraryArchives || [],
+    printHistory: data.printHistory || [],
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
@@ -3171,11 +3276,57 @@ function preparePrint() {
   if (contentMode === "answers" || contentMode === "both") {
     appendPrintSheet(records, true);
   }
+  recordPrintHistory(records, scope, contentMode);
   return true;
 }
 
 function selectedPrintContentMode() {
-  return document.querySelector("input[name='printContent']:checked")?.value || "practice";
+  return normalizePrintContentMode(document.querySelector("input[name='printContent']:checked")?.value);
+}
+
+function normalizePrintContentMode(value) {
+  return ["practice", "answers", "both"].includes(value) ? value : "practice";
+}
+
+function normalizePrintScope(value) {
+  return ["current", "joseki", "selected", "category", "all"].includes(value) ? value : "current";
+}
+
+function printContentLabel(value) {
+  const normalized = normalizePrintContentMode(value);
+  if (normalized === "answers") return "答案页";
+  if (normalized === "both") return "练习+答案";
+  return "练习页";
+}
+
+function printScopeLabel(value) {
+  const normalized = normalizePrintScope(value);
+  if (normalized === "joseki") return "当前定式全部变形";
+  if (normalized === "selected") return "勾选内容";
+  if (normalized === "category") return ui.selectedCategoryId === "all" ? "当前筛选" : "当前分类";
+  if (normalized === "all") return "全部定式";
+  return "当前变形";
+}
+
+function recordPrintHistory(records, scope, contentMode) {
+  const titles = records.map((record) => {
+    const variant = record.variantName || "基础变化";
+    return record.title && record.title !== variant ? `${record.title} · ${variant}` : variant;
+  });
+  const entry = {
+    id: createId("prt"),
+    printedAt: new Date().toISOString(),
+    scope: normalizePrintScope(scope),
+    scopeLabel: printScopeLabel(scope),
+    contentMode: normalizePrintContentMode(contentMode),
+    contentLabel: printContentLabel(contentMode),
+    layout: ui.printLayout === "single" ? "single" : "grid",
+    recordCount: records.length,
+    recordTitles: titles.slice(0, 12),
+  };
+  store.printHistory = normalizePrintHistory([entry, ...(store.printHistory || [])]);
+  saveStore();
+  renderPrintHistory();
 }
 
 function appendPrintSheet(records, withAnswers) {

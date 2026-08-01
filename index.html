@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>围棋定式记忆</title>
-    <link rel="stylesheet" href="styles.css?v=20260708-crash-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260801-print-history" />
   </head>
   <body>
     <div class="app-shell">
@@ -175,6 +175,14 @@
             </select>
             <div id="printSelectionList" class="print-selection-list"></div>
             <button type="button" class="primary-button wide" id="printPanelButton">打印 / PDF</button>
+            <div class="print-history-panel" aria-label="打印记录">
+              <div class="print-history-heading">
+                <strong>打印记录</strong>
+                <button type="button" class="link-button" id="clearPrintHistoryButton">清空</button>
+              </div>
+              <div id="printHistorySummary" class="print-history-summary">暂无打印记录</div>
+              <div id="printHistoryList" class="print-history-list"></div>
+            </div>
           </details>
         </aside>
 
@@ -304,6 +312,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260708-crash-fix"></script>
+    <script src="app.js?v=20260801-print-history"></script>
   </body>
 </html>
